@@ -1,15 +1,16 @@
 import asyncio
-
 import disnake
 import random
 from collections import Counter
 
 
 async def game(bot, channel: disnake.TextChannel, player: list):
-    global guild, civilian, mafia, detective, doctor
-    guild = bot.get_guild(1137073750479732837)
-    win = False
-    win_id = 0
+    global guild, civilian, mafia, detective, doctor, vote1
+    global civilianwon, mafiawon, ended
+    civilianwon = False
+    mafiawon = False
+    ended = False
+    guild = bot.get_guild(1080929023842074684)
     tempcivilian = []
     civilian = player
     mafia = random.choice(player)
@@ -26,39 +27,56 @@ async def game(bot, channel: disnake.TextChannel, player: list):
         a = await channel.send('@here')
         await asyncio.sleep(2)
         await a.delete()
-    intermission = await channel.send('**Начало через 30 секунд...**')
-    await asyncio.sleep(1)
+    await channel.send(embed=disnake.Embed(description=f'``Правила игры:``\n1. Детективу запрещено всяческими другимим способами доказывать что человек мафия, только текстом.\n2. Запрещено сливать роли в личных сообщениях.'))
+    intermission = await channel.send(embed=disnake.Embed(description=f'**Начало через 30 секунд**'))
+    await asyncio.sleep(30)
     await intermission.delete()
     role_choise = await channel.send(embed=disnake.Embed(description=f'Выбор ролей.'))
     await asyncio.sleep(3)
     await role_choise.edit(embed=disnake.Embed(description=f'Выбор ролей..'))
     await asyncio.sleep(3)
     await role_choise.edit(embed=disnake.Embed(description=f'Выбор ролей...'))
+    await mafia.send(embed=disnake.Embed(
+        description=f'**Ваша роль Мафия** \n**Ваша задача убить всех мирных жителей**\n'
+                    f'**Что-бы победить вам надо сократить количество мирных жителей до двух**'))
+    await doctor.send(embed=disnake.Embed(
+        description=f'**Ваша роль Доктор** \n**Вы можете вылечить любого человека**\n'
+                    f'**Либо себя, что-бы уберечь от смерти **'))
+    for member in civilian:
+        if member == doctor or member == detective:
+            pass
+        else:
+            await member.send(embed=disnake.Embed(
+                description=f'**Ваша роль Мирный житель** \n**Ваша задача выжить и не умереть**'
+                            f' \n**Вы должны делать верные выборы на головании **'))
+            await asyncio.sleep(0.5)    
     await asyncio.sleep(3)
     await role_choise.delete()
     await channel.send(embed=disnake.Embed(description=f'Наступает ночь \nГород засыпает \nПросыпаеться мафия'))
     await asyncio.sleep(2)
-    for i in range(10000):
-        if win:
+    while True:
+        if ended:
             break
-        win, win_id = await play_cylce(bot, channel)
-    if win_id == 0 or win_id == detective.id:
-        try:
-            victory = guild.get_member(int(win_id))
+        await play_cylce(bot, channel)
+    if civilianwon:
+        if detective:
+            victory = guild.get_member(int(detective.id))
             await channel.send(embed=disnake.Embed(
                 description=f'Игра закончена, победа за мирными жителями и детективом ' + victory.mention))
-        except:
+        else:
             await channel.send(embed=disnake.Embed(description=f'Игра закончена, победа за мирными жителями'))
-    else:
-        victory = guild.get_member(int(win_id))
+    if mafiawon:
+        victory = guild.get_member(int(mafia.id))
         await channel.send(embed=disnake.Embed(description=f'Игра закончена, победа за мафией ' + victory.mention))
     await asyncio.sleep(15)
     await channel.delete()
 
 
-async def play_cylce(bot, channel):
-    global guild, civilian, mafia, detective, tempmember, doctor, detective_message, doctor_message, lived, cured_player, tempmember2
+async def play_cylce(client, channel):
+    global guild, civilian, mafia, detective, tempmember, doctor, detective_message, doctor_message, lived, cured_player, tempmember2, vote1, doctorplayers
+    global civilianwon, mafiawon, ended
     cured_player = ''
+    doctorplayers = []
     detective_message = True
     doctor_message = True
     lived = False
@@ -76,16 +94,12 @@ async def play_cylce(bot, channel):
     for number, member in number_to_id.items():
         tempmember2 = guild.get_member(member)
         players += f'`Номер: {number}, Имя: {tempmember2.display_name}`\n'
-    await mafia.send(embed=disnake.Embed(
-        description=f'**Ваша роль Мафия** \n**Ваша задача убить всех мирных жителей**\n'
-                    f'**Что-бы победить вам надо сократить количество мирных жителей до двух**'))
-
     await mafia.send(embed=disnake.Embed(description=f'**Сделай выбор (отправь номер)**\n' + players))
 
     def check(m):
         return mafia == m.author
     try:
-        mafia_choise1 = await bot.wait_for('message', check=check, timeout=30)
+        mafia_choise1 = await client.wait_for('message', check=check, timeout=30)
     except asyncio.TimeoutError:
         pass
     try:
@@ -103,9 +117,6 @@ async def play_cylce(bot, channel):
     await channel.send(
         embed=disnake.Embed(description=f'Мафия сделала свой выбор \nМафия засыпает \nПросыпается Доктор'))
     if doctor:
-        await doctor.send(embed=disnake.Embed(
-            description=f'**Ваша роль Доктор** \n**Вы можете вылечить любого человека**'
-                        f' \n**Либо себя, что-бы уберечь от смерти **'))
         number_to_id = {}
         players = ''
         random.shuffle(civilian)
@@ -115,18 +126,32 @@ async def play_cylce(bot, channel):
         for number, member in number_to_id.items():
             tempmember2 = guild.get_member(member)
             players += f'`Номер: {number}, Имя: {tempmember2.display_name}`\n'
-        await doctor.send(embed=disnake.Embed(description=f'**Сделай выбор (отправь номер)**\n' + players))
+        await doctor.send(embed=disnake.Embed(description=f'**Сделай выбор (учитите вы можете лечить только разных игроков, одного лечить не получится) (отправь номер)**\n' + players))
 
         def check(m):
             return doctor == m.author
         try:
-            doctor_choise1 = await bot.wait_for('message', check=check, timeout=30)
+            doctor_choise1 = await client.wait_for('message', check=check, timeout=30)
         except asyncio.TimeoutError:
             pass
         try:
             doctor_choise = int(doctor_choise1.content)
-            cured_player = number_to_id[doctor_choise]
-            await doctor.send(embed=disnake.Embed(description="**Вы вылечили данного игрока**"))
+            if str(number_to_id[doctor_choise]) not in doctorplayers:
+                cured_player = number_to_id[doctor_choise]
+                doctorplayers.append(str(cured_player))
+                await doctor.send(embed=disnake.Embed(description="**Вы вылечили данного игрока**"))
+            else:
+                await doctor.send(embed=disnake.Embed(description="**Вы уже лечили данного игрока, лечение недоступно**"))
+                try:
+                    await doctor.send(embed=disnake.Embed(description=f'**Даем второй шанс (отправь номер)**\n' + players))
+                    doctor_choise1 = await client.wait_for('message', check=check, timeout=30)
+                except asyncio.TimeoutError:
+                    pass
+                doctor_choise = int(doctor_choise1.content)
+                if str(number_to_id[doctor_choise]) not in doctorplayers:
+                    cured_player = number_to_id[doctor_choise]
+                    doctorplayers.append(str(cured_player))
+                    await doctor.send(embed=disnake.Embed(description="**Вы вылечили данного игрока**"))
         except:
             doctor_choise = None
 
@@ -134,8 +159,12 @@ async def play_cylce(bot, channel):
             lived = True
         elif tempmember.id == doctor.id:
             doctor = None
+            print('killed doctor')
+            civilian.remove(tempmember)
         elif tempmember.id == detective.id:
             detective = None
+            print('killed detective')
+            civilian.remove(tempmember)
         else:
             print('killed')
             civilian.remove(tempmember)
@@ -163,7 +192,7 @@ async def play_cylce(bot, channel):
         def check(m):
             return detective == m.author
         try:
-            detective_choise1 = await bot.wait_for('message', check=check, timeout=30)
+            detective_choise1 = await client.wait_for('message', check=check, timeout=30)
         except asyncio.TimeoutError:
             pass
         try:
@@ -179,9 +208,9 @@ async def play_cylce(bot, channel):
                 await detective.send(embed=disnake.Embed(
                     description=f"Данный игрок является доктором"))
             else:
-                await detective.send(embed=disnake.Embed(description="Данный игрок не является мафией"))
+                await detective.send(embed=disnake.Embed(description="Данный игрок является мирным жителем"))
         except Exception as e:
-            await detective.send(embed=disnake.Embed(description="Неизвестный номер"))
+            detective_choise = None
     await asyncio.sleep(random.randint(0,10))
     await channel.send(
         embed=disnake.Embed(description=f'Детектив сделал свой выбор \nДетектив засыпает'))
@@ -213,18 +242,19 @@ async def play_cylce(bot, channel):
     print(civilian)
     if len(civilian) <= 1:
         await channel.send(embed=disnake.Embed(description="Остался последний мирный житель"))
-        return True, mafia.id
+        ended = True
+        mafiawon = True
+        return
     await channel.send(embed=disnake.Embed(description="Город просыпается и начинается время обсуждения"))
     await asyncio.sleep(2)
     await channel.send(embed=disnake.Embed(description="Время обсуждаения пошло, у вас 60 секунд"))
-    templist = []
-    templist += civilian
-    templist.append(mafia)
-    for perm in templist:
+    templist1 = []
+    templist1 += civilian
+    templist1.append(mafia)
+    for perm in templist1:
         await channel.set_permissions(perm, view_channel=True, send_messages=True)
     await asyncio.sleep(60)
     players = ''
-    vote = []
     templist.clear()
     templist = []
     templist += civilian
@@ -239,46 +269,56 @@ async def play_cylce(bot, channel):
         players += f'`Номер: {number}, Имя: {tempmember2.display_name}`\n'
     await channel.send(embed=disnake.Embed(description="**Спиcок живых игроков: **\n" + players))
     print(templist, players)
+    vote1 = []
     for j in templist:
         await channel.send(embed=disnake.Embed(description=f"{j.mention} делай свой выбор (отправь номер)"))
-
         def check(m):
             return j == m.author
         try:
-            choice_vote = await bot.wait_for('message', check=check, timeout=30)
+            choice_vote = await client.wait_for('message', check=check, timeout=30)
             choice_vote = choice_vote.content
         except asyncio.TimeoutError:
             pass
         try:
             choice = int(choice_vote)
-            vote.append(str(number_to_id[choice]))
+            vote1.append(str(number_to_id[choice]))
         except Exception as e:
             print(e)
             pass
     for perm in templist:
         await channel.set_permissions(perm, view_channel=True, send_messages=False)
     templist.clear()
-    print(vote)
-    votelist = Counter(vote)
+    print(vote1)
+    votelist = Counter(vote1)
     most_common_id = 0
-    print(votelist.most_common(2)[0][1], votelist.most_common(2)[1][1])
     try:
         if votelist.most_common(2)[0][1] == votelist.most_common(2)[1][1]:
             await channel.send(embed=disnake.Embed(description=f"Игроки не сошлись во мнениях"))
+            await asyncio.sleep(3)
             await channel.send(embed=disnake.Embed(description=f'Наступает ночь, \nГород засыпает, \nПросыпаеться мафия'))
+            return
         else:
-            most_common_id = votelist.most_common(1)[0]
+            most_common_id = votelist.most_common(1)[0][0]
     except:
-        most_common_id = votelist.most_common(1)[0]
+        most_common_id = votelist.most_common(1)[0][0]
+    print(most_common_id)
     mostcommonmember = guild.get_member(int(most_common_id))
+    if mostcommonmember:
+        await channel.send(embed=disnake.Embed(description=f'По итогам голосования выбывает: {mostcommonmember.mention}'))
     if mostcommonmember == mafia:
         await channel.send(embed=disnake.Embed(description=f"Данный игрок являлся мафией"))
-        if detective:
-            return True, detective.id
-        return True, 0
+        civilianwon = True
+        ended = True
+        return
     elif mostcommonmember == detective:
         await channel.send(embed=disnake.Embed(description=f"Данный игрок являлся детективом"))
-        return False
+        detective = None
+        civilian.remove(mostcommonmember)
+        return
     else:
-        await channel.send(embed=disnake.Embed(description=f"Данный игрок являлся мирным жителем"))
-        return False
+        if mostcommonmember:
+            await channel.send(embed=disnake.Embed(description=f"Данный игрок являлся мирным жителем"))
+            civilian.remove(mostcommonmember)
+            await channel.send(embed=disnake.Embed(description=f'Наступает ночь \nГород засыпает \nПросыпаеться мафия'))
+            await asyncio.sleep(3)
+            return
